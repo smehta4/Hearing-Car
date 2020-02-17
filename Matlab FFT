@@ -1,0 +1,14 @@
+%opens audio file
+file = "Noise.mp3";
+[x,fs] = audioread(file);
+
+for i=0:9
+    xs = x(1+(i*end/10):(i+1)*end/10);
+    nn = length(xs);
+    
+    subplot(2,5,i+1);
+    stem(0:nn-1,abs(fft(xs)));
+    xlabel('Frequency');
+    ylabel('|X(k)|');
+    title('Magnitude Response FFT Function'); 
+end
