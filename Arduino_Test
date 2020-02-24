@@ -1,0 +1,67 @@
+int mic = A0;
+
+unsigned long startMillis = 0;
+const unsigned int samples = 1024;
+const unsigned int sampleWindow = 1000;
+
+void setup() {
+  Serial.begin(250000);
+  //unsigned int value = 0;
+  //unsigned int valueArray[1024] = {};
+  Serial.println("HI");
+
+
+
+  /*
+  for (int i = 0; i < samples; i++) {
+    value = analogRead(mic);
+    valueArray[i] = value;
+  }
+  */
+
+  /*
+  Serial.println("Time: " + String(millis() - t0));
+  for(int i = 0; i < samples; i++) {
+    Serial.println(valueArray[i]);
+  }
+  */
+
+}
+
+void loop() {
+  unsigned int i = 0;
+  unsigned int value = 0;
+  unsigned int valueArray[1024] = {};
+  startMillis = millis();
+  while (millis() - startMillis < sampleWindow) {
+    value = analogRead(mic);
+    i += 1;
+  }
+  Serial.println(i);
+}
+
+/*
+// measure basic properties of the input signal
+// determine if analog or digital, determine range and average.
+void setup() {
+  Serial.begin(9600);
+  long signalAvg = 0, signalMax = 0, signalMin = 1024, t0 = millis();
+  for (int i = 0; i < Samples; i++) {
+      int value = analogRead(Mic);
+      signalMin = min(signalMin, value);
+      signalMax = max(signalMax, value);
+      signalAvg += value;
+  }
+  signalAvg /= Samples;
+
+  // print
+  Serial.print("Time: " + String(millis() - t0));
+  Serial.print(" Min: " + String(signalMin));
+  Serial.print(" Max: " + String(signalMax));
+  Serial.print(" Avg: " + String(signalAvg));
+  Serial.print(" Span: " + String(signalMax - signalMin));
+  Serial.print(", " + String(signalMax - signalAvg));
+  Serial.print(", " + String(signalAvg - signalMin));
+  Serial.println("");
+}
+*/
