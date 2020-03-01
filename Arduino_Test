@@ -1,44 +1,99 @@
-int mic = A0;
-
-unsigned long startMillis = 0;
-const unsigned int samples = 1024;
-const unsigned int sampleWindow = 1000;
+const float Pi = 3.1415926;
+uint32_t t0, t;
+volatile uint8_t rawInputArray[512]={}; 
+volatile uint16_t sampleNum = 0;
+const uint16_t samples = 512;
 
 void setup() {
-  Serial.begin(250000);
-  //unsigned int value = 0;
-  //unsigned int valueArray[1024] = {};
-  Serial.println("HI");
+  cli();//disable interrupts
+  ADCSRA = 0;             // clear ADCSRA register,                             00000000 into ADCSRA
+  ADCSRB = 0;             // clear ADCSRB register,                             00000000 into ADCSRB
+  ADMUX |= (0 & 0x07);    // set A0 analog input pin,                           00000000 into ADMUX
+  ADMUX |= (1 << REFS0);  // set reference voltage,                             01000000 into ADMUX
+  ADMUX |= (1 << ADLAR);  // left align ADC value to 8 bits from ADCH register, 00100000 into ADMUX
 
+  //ADC sampling rate is 16MHz/prescaler/13 for Arduino Uno
+  ADCSRA |= (1 << ADPS2) | (1 << ADPS1) | (1 << ADPS0);  //64 prescaler samples at 19.23 kHz,  00000110 into ADCSRA
+  
+  ADCSRA |= (1 << ADATE); // enable auto trigger,                               00100000 into ADCSRA
+  ADCSRA |= (1 << ADIE);  // enable interrupts when measurement complete,       00001000 into ADCSRA
+  ADCSRA |= (1 << ADEN);  // enable ADC,                                        10000000 into ADCSRA
+  ADCSRA |= (1 << ADSC);  // start ADC measurements,                            01000000 into ADCSRA
+  delay(2000);
+  sei();//enable interrupts
+  Serial.begin(115200);   //begin serial communication
+  Serial.println("GO");   //inidicates start of program
+  delay(200);
+}
 
-
-  /*
-  for (int i = 0; i < samples; i++) {
-    value = analogRead(mic);
-    valueArray[i] = value;
+ISR(ADC_vect) {
+  if (sampleNum < samples) {
+    rawInputArray[sampleNum] = ADCH;
+    sampleNum++;
   }
-  */
-
-  /*
-  Serial.println("Time: " + String(millis() - t0));
-  for(int i = 0; i < samples; i++) {
-    Serial.println(valueArray[i]);
-  }
-  */
-
 }
 
 void loop() {
-  unsigned int i = 0;
-  unsigned int value = 0;
-  unsigned int valueArray[1024] = {};
-  startMillis = millis();
-  while (millis() - startMillis < sampleWindow) {
-    value = analogRead(mic);
-    i += 1;
+  const uint16_t N = 256;
+  float rawInputArrayReal[55] = {};
+  float rawInputArrayImag[55] = {};
+  float rawInputArrayAbs[55] = {};
+  delay(100);
+
+  Serial.println("START");
+  //DFT
+  for (int k = 0; k < 55; k++){
+    for (int i = 0; i < samples; i++) {
+      rawInputArrayReal[k] = rawInputArrayReal[k] + (rawInputArray[i] * cos(2*Pi*k*i/N));
+      rawInputArrayImag[k] = rawInputArrayImag[k] + (rawInputArray[i] * sin(2*Pi*k*i/N));
+    }
+    rawInputArrayAbs[k] = sqrt( sq(rawInputArrayReal[k]) + sq(rawInputArrayImag[k]) );
   }
-  Serial.println(i);
+  Serial.println("STOP");
+
+  
+  for (int i = 0; i < samples; i++) {
+    Serial.println(rawInputArray[i]);
+  }
+    
+  for (int i = 0; i < 55; i++) {
+    Serial.println(rawInputArrayAbs[i]);
+  }
+  
+
+  /*
+  if (sampleNum >= samples) {
+    sampleNum = 0;
+  }
+  */
+  
+  /*
+  uint16_t rawInputArrayCopy[512] = {};
+  for (int i = 0; i < samples; i++) {
+    rawInputArrayCopy[i] = rawInputArray[i];
+    //Serial.println(rawInputArrayCopy[i]);
+  }
+  */
 }
+
+
+/*
+void loop() {
+  if (sampleNum2>=10000) {
+    t = micros()-t0;  // calculate elapsed time
+
+    Serial.print("Sampling frequency: ");
+    Serial.print((float)10000000/t);
+    Serial.println(" KHz");
+    delay(1);
+    
+    // restart
+    t0 = micros();
+    sampleNum2=0;
+  }
+}
+*/
+
 
 /*
 // measure basic properties of the input signal
