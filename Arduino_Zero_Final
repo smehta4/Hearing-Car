@@ -1,0 +1,115 @@
+const int mic1 = A0;              //mic1 on analogread pin 0
+uint32_t t0, t;                   //variables to store time difference
+const uint16_t samples = 256;     //number of mic samples
+volatile uint16_t sampleNum = 0;  //counter to count mic readings
+const uint16_t N = 256;           //DFT length
+const float Pi2N = 6.283185307/N; //constant value of 2*pi/N
+const uint8_t kstart = 10;        //starting frequency is kstart*fs/N
+const uint8_t kend = 60;          //ending frequency is kend*fs/N
+const uint8_t kdiff = kend - kstart;  //difference between start and end frequency bins
+volatile uint16_t rawInputArray[samples]={};    //array to hold mic readings
+volatile uint32_t rawInputArrayAbs[kdiff] = {}; //array to hold frequency bin amplitudes
+uint32_t coslookup[N] = {};                     //array to hold cos lookup values
+uint32_t sinlookup[N] = {};                     //array to hold sin lookup values
+
+//Setup for ADC
+void setupADC(){
+  ADC->CTRLA.bit.ENABLE = 0;                     // Disable ADC
+  while( ADC->STATUS.bit.SYNCBUSY == 1 );        // Wait for synchronization
+  ADC->CTRLB.reg = ADC_CTRLB_PRESCALER_DIV256 |  // Divide Clock by 256, 10.461kHz
+                   ADC_CTRLB_RESSEL_12BIT;       // Result on 12 bits
+  ADC->AVGCTRL.reg = ADC_AVGCTRL_SAMPLENUM_1 |   // 1 sample
+                     ADC_AVGCTRL_ADJRES(0x00ul); // Adjusting result by 0
+  ADC->SAMPCTRL.reg = 0x00;                      // Sampling Time Length = 0
+  ADC->CTRLA.bit.ENABLE = 1;                     // Enable ADC
+  while( ADC->STATUS.bit.SYNCBUSY == 1 );        // Wait for synchronization
+  analogReadResolution(12);
+}
+
+
+void setup() {
+  setupADC();             //sets up ADC
+  Serial.begin(115200);   //begin serial communication
+  delay(500);             //wait for ADC to stabilize
+  populateLookup();       //populate sin and cos lookup tables
+}
+
+
+void loop() {
+  //Serial.println("GO");   //inidicates start of DFT
+  //t0 = millis();
+  //t = millis()-t0;
+  //Serial.println(t);
+  
+  readMic1();     //populates mic input array
+  calculateDFT(); //calculates DFT
+  uint8_t maxFreqBin = maxFrequency();  //finds max frequency bin index
+
+  //printrawInputArrayAbs();
+  //printrawInputArray();
+  Serial.println((maxFreqBin+kstart)*40.86328125);
+}
+
+
+//Populate cos and sin lookup table
+void populateLookup(){
+  for (int i = 0; i < N; i++){
+    coslookup[i] = cos(Pi2N*i);
+    sinlookup[i] = sin(Pi2N*i);
+  }
+}
+
+
+//Fill array with mic1 input
+void readMic1(){
+  while (sampleNum < samples) {
+    rawInputArray[sampleNum] = analogRead(mic1);
+    sampleNum++;
+  }
+  sampleNum = 0;
+}
+
+//Calculates DFT of rawInputArray
+void calculateDFT(){
+  uint32_t rawInputArrayReal[kdiff] = {};
+  uint32_t rawInputArrayImag[kdiff] = {};
+  uint16_t modval;
+  for (int k = 0; k < kdiff; k++){
+    for (int i = 0; i < samples; i++) {
+      modval = i*(k+kstart) % N;
+      rawInputArrayReal[k] = rawInputArrayReal[k] + (rawInputArray[i] * coslookup[modval]);
+      rawInputArrayImag[k] = rawInputArrayImag[k] + (rawInputArray[i] * sinlookup[modval]);
+    }
+    rawInputArrayAbs[k] = sqrt( sq(rawInputArrayReal[k]) + sq(rawInputArrayImag[k]) );
+  }
+}
+
+
+//Finds maximum frequency bin index
+uint8_t maxFrequency(){
+  uint32_t maximum = 0;
+  uint8_t index = 0;
+  for (int i = 0; i < kdiff; i++) {
+    if (rawInputArrayAbs[i] > maximum) {
+      maximum = rawInputArrayAbs[i];
+      index = i;
+    }
+  }
+  return index;
+}
+
+
+//Print values of raw input array
+void printrawInputArray(){
+  for (int i = 0; i < samples; i++) {
+    Serial.println(rawInputArray[i]);
+  }
+}
+
+
+//Print values of frequency bins
+void printrawInputArrayAbs(){
+  for (int i = 0; i < kdiff; i++) {
+    Serial.println(rawInputArrayAbs[i]);
+  }
+}
