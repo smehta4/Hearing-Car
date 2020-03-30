@@ -9,8 +9,8 @@ const uint8_t kend = 60;          //ending frequency is kend*fs/N
 const uint8_t kdiff = kend - kstart;  //difference between start and end frequency bins
 volatile uint16_t rawInputArray[samples]={};    //array to hold mic readings
 volatile uint32_t rawInputArrayAbs[kdiff] = {}; //array to hold frequency bin amplitudes
-float coslookup[N] = {};
-float sinlookup[N] = {};
+float coslookup[N] = {};                        //array to hold cos lookup values
+float sinlookup[N] = {};                        //array to hold sin lookup values
 
 //Setup for ADC
 void setupADC(){
