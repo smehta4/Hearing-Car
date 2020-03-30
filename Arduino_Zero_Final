@@ -9,8 +9,8 @@ const uint8_t kend = 60;          //ending frequency is kend*fs/N
 const uint8_t kdiff = kend - kstart;  //difference between start and end frequency bins
 volatile uint16_t rawInputArray[samples]={};    //array to hold mic readings
 volatile uint32_t rawInputArrayAbs[kdiff] = {}; //array to hold frequency bin amplitudes
-uint32_t coslookup[N] = {};                     //array to hold cos lookup values
-uint32_t sinlookup[N] = {};                     //array to hold sin lookup values
+float coslookup[N] = {};
+float sinlookup[N] = {};
 
 //Setup for ADC
 void setupADC(){
@@ -40,14 +40,14 @@ void loop() {
   //t0 = millis();
   //t = millis()-t0;
   //Serial.println(t);
-  
+
   readMic1();     //populates mic input array
   calculateDFT(); //calculates DFT
   uint8_t maxFreqBin = maxFrequency();  //finds max frequency bin index
 
   //printrawInputArrayAbs();
   //printrawInputArray();
-  Serial.println((maxFreqBin+kstart)*40.86328125);
+  //Serial.println((maxFreqBin+kstart)*40.86328125);
 }
 
 
@@ -69,10 +69,11 @@ void readMic1(){
   sampleNum = 0;
 }
 
+
 //Calculates DFT of rawInputArray
 void calculateDFT(){
-  uint32_t rawInputArrayReal[kdiff] = {};
-  uint32_t rawInputArrayImag[kdiff] = {};
+  float rawInputArrayReal[kdiff] = {};
+  float rawInputArrayImag[kdiff] = {};
   uint16_t modval;
   for (int k = 0; k < kdiff; k++){
     for (int i = 0; i < samples; i++) {
