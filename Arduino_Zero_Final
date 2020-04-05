@@ -1,19 +1,23 @@
 const int mic1 = A0;                  //mic1 on analogread pin 0
 uint32_t t0, t;                       //variables to store time difference
+const uint16_t fs = 10461;            //sampling frequency
 const uint16_t sampleNum = 256;       //number of mic samples
 volatile uint16_t sampleCount = 0;    //counter to count mic readings
 const uint16_t N = 256;               //DFT length
 const float Pi2N = 6.283185307/N;     //constant value of 2*pi/N
-const uint8_t kstart = 10;            //starting frequency is kstart*fs/N
-const uint8_t kend = 60;              //ending frequency is kend*fs/N
+const uint8_t kstart = 5;             //starting frequency is kstart*fs/N
+const uint8_t kend = 45;              //ending frequency is kend*fs/N
 const uint8_t kdiff = kend - kstart;  //difference between start and end frequency bins
 const uint8_t freqNum = 12;           //number of max frequency values to store
 volatile uint8_t freqCount = 0;       //counter to count max frequencies
-volatile uint16_t rawInputArray[sampleNum] = {};    //array to hold mic readings
-volatile uint32_t rawInputArrayAbs[kdiff] = {}; //array to hold frequency bin amplitudes
-volatile uint8_t freqsMax[freqNum] = {};       //array to hold values of max frequencies over time
-float coslookup[N] = {};                        //array to hold cos lookup values
-float sinlookup[N] = {};                        //array to hold sin lookup values
+volatile uint8_t freqsMax[freqNum] = {};          //array to hold values of max frequencies over time
+volatile uint16_t rawInputArray[sampleNum] = {};  //array to hold mic readings
+volatile uint32_t rawInputArrayAbs[kdiff] = {};   //array to hold frequency bin amplitudes
+float coslookup[N] = {};                          //array to hold cos lookup values
+float sinlookup[N] = {};                          //array to hold sin lookup values
+const uint8_t freqLimit = ceil(800*N/fs); //frequency limit for freqsMax array
+const uint16_t ampLimit = 600;            //amplitude limit for freqsMax array
+const uint8_t detectLimit = 8;            //number of detections threshold
 
 //Setup for ADC
 void setupADC(){
@@ -47,13 +51,15 @@ void loop() {
   readMic1();     //populates mic input array
   calculateDFT(); //calculates DFT
   uint8_t freqMaxBin = freqMax();  //finds max frequency bin index
-  freqsMax[freqCount] = freqMaxBin;
-  freqCount++;
-  if (freqCount > 11) freqCount = 0;
-  printFreqsMax();
+  freqsMaxAdd(freqMaxBin);         //adds frequency index to freqsMax array if it meets the specs
+  freqsMaxDetect();                //checks freqsMax array against detection threshold
+  
+  if (freqCount > freqNum - 1) freqCount = 0; //resets freqsMax array index count
+  
+  //printFreqsMax();
   //printrawInputArrayAbs();
   //printrawInputArray();
-  //Serial.println((freqMaxBin+kstart)*40.86328125);
+  //Serial.println((freqMaxBin+kstart)*fs/N);
 }
 
 
@@ -106,6 +112,30 @@ uint8_t freqMax(){
 }
 
 
+//Determines whether to put freq into freqsMax array
+void freqsMaxAdd(uint8_t index) {
+  if ((rawInputArrayAbs[index] > ampLimit) && (index + kstart > freqLimit)) {
+    freqsMax[freqCount] = 1;
+  }
+  else {
+    freqsMax[freqCount] = 0;
+  }
+  freqCount++;
+}
+
+
+//Sums freqsMax array and compares against detection threshold
+void freqsMaxDetect() {
+  uint8_t sum = 0;
+  for (int i = 0; i < freqNum; i++) {
+    sum += freqsMax[i];
+  }
+  if (sum >= detectLimit) {
+    Serial.println("SIREN");
+  }
+}
+
+
 //Print values of raw input array
 void printrawInputArray(){
   for (int i = 0; i < sampleNum; i++) {
@@ -117,13 +147,16 @@ void printrawInputArray(){
 //Print values of frequency bins
 void printrawInputArrayAbs(){
   for (int i = 0; i < kdiff; i++) {
-    Serial.println(rawInputArrayAbs[i]);
+    Serial.print(rawInputArrayAbs[i]);
+    Serial.print(", ");
   }
+  Serial.println();
 }
 
 
 void printFreqsMax(){
   for (int i = 0; i < freqNum; i++) {
-    Serial.println(freqsMax[i]);
+    Serial.print(freqsMax[i]);
   }
+  Serial.println();
 }
