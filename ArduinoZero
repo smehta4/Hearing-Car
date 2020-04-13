@@ -1,5 +1,7 @@
 const int mic1 = A0;                  //mic1 on analogread pin 0
 const int mic2 = A1;                  //mic2 on analogread pin 1
+const int led_Right = 3;
+const int led_Left = 4;
 uint32_t t0, t;                       //variables to store time difference
 const uint16_t fs = 10461;            //sampling frequency
 const uint16_t sampleNum = 256;       //number of mic samples
@@ -11,28 +13,30 @@ const uint8_t kend = 45;              //ending frequency is kend*fs/N
 const uint8_t kdiff = kend - kstart;  //difference between start and end frequency bins
 volatile uint16_t rawInputArray1[sampleNum] = {}; //array to hold mic1 readings
 volatile uint16_t rawInputArray2[sampleNum] = {}; //array to hold mic2 readings
-volatile uint32_t rawInputArray1Abs[kdiff] = {};  //array to hold frequency bin amplitudes
+volatile uint32_t rawInputArray1Abs[kdiff] = {};  //array to hold frequency bin magnitudes
 float coslookup[N] = {};                          //array to hold cos lookup values
 float sinlookup[N] = {};                          //array to hold sin lookup values
 const uint8_t freqNum = 12;               //number of max frequency values to store
 volatile uint8_t freqCount = 0;           //counter to count max frequencies
 volatile uint8_t freqsMax[freqNum] = {};  //array to hold values of max frequencies over time
-const uint8_t ampNum = 8;                 //number of average amplitude values to store
-volatile uint8_t ampCount = 0;            //counter to count average amplitude
-volatile uint16_t ampsAvg[ampNum] = {};   //array to hold values of average amplitude over time
+const uint8_t magNum = 8;                 //number of average magnitudes values to store
+volatile uint8_t magCount = 0;            //counter to count average magnitudes
+volatile uint16_t magsAvg[magNum] = {};   //array to hold values of average magnitudes over time
 const uint8_t freqLimit = ceil(800*N/fs); //frequency limit for freqsMax array
-volatile uint16_t ampLimit = 600;         //amplitude limit for freqsMax array
-const uint8_t ampCutoff = 10;             //limits ampAvg values from exceeding ampCutoff*ampLimit
-const uint16_t ampWeight = 100;           //added weight to ampAvg values
+volatile uint16_t magLimit = 600;         //magnitude limit for freqsMax array
+const uint8_t magCutoff = 10;             //limits ampAvg values from exceeding magCutoff*magLimit
+const uint16_t magWeight = 500;           //added weight to ampAvg values
 const uint8_t detectLimit = 8;            //number of detections threshold
 const uint8_t ptpNum = 5;                 //number of max and min numbers to find from rawInputArrays to calculate peak to peak
+volatile bool directionDetect = 0;        //boolean flag to indicate direction
+volatile bool sirenDetect = 0;            //boolean flag to indicate siren
 
 //Setup for ADC
 void setupADC(){
   ADC->CTRLA.bit.ENABLE = 0;                     // Disable ADC
   while( ADC->STATUS.bit.SYNCBUSY == 1 );        // Wait for synchronization
   ADC->CTRLB.reg = ADC_CTRLB_PRESCALER_DIV256 |  // Divide Clock by 256, 10.461kHz
-                   ADC_CTRLB_RESSEL_12BIT;       // Result on 12 bits
+                   ADC_CTRLB_RESSEL_12BIT;       // Result in 12 bits
   ADC->AVGCTRL.reg = ADC_AVGCTRL_SAMPLENUM_1 |   // 1 sample
                      ADC_AVGCTRL_ADJRES(0x00ul); // Adjusting result by 0
   ADC->SAMPCTRL.reg = 0x00;                      // Sampling Time Length = 0
@@ -53,7 +57,10 @@ void ClockInit(void){
                      GCLK_GENDIV_DIV(0);
 }
 
+
 void setup() {
+  //pinMode(led_Right, OUTPUT);
+  //pinMode(led_Left, OUTPUT);
   ClockInit();
   setupADC();             //sets up ADC
   Serial.begin(115200);   //begin serial communication
@@ -63,56 +70,61 @@ void setup() {
 
 
 void loop() {
-  //t0 = millis();
-  
-  readMic1();                      //populates rawInputArrays1 with mic1 readings
-  t0 = millis();
+  readMics();                      //populates rawInputArrays with mic readings
   uint16_t ptp1 = calculatePTP1(); //calculates peak to peak of rawInputArray1
   uint16_t ptp2 = calculatePTP2(); //calculates peak to peak of rawInputArray2
-  t = millis()-t0;
-  //Serial.println(t);
-  Serial.println(ptp1);
-  Serial.println(ptp2);
   calculateDFT();                  //calculates DFT from rawInputArray1
   uint8_t freqMaxBin = freqMax();  //finds max frequency bin index
-  ampsAvgAdd();                    //finds average amplitude of frequencies and adds to ampsAvg array
-  ampLimitSet();                   //sets amplitude limit by taking the average of the ampsAvg array
+  magsAvgAdd();                    //finds average magnitudes of frequencies and adds to magsAvg array
+  magLimitSet();                   //sets magnitudes limit by taking the average of the magsAvg array
   freqsMaxAdd(freqMaxBin);         //adds frequency index to freqsMax array if it meets the specs
   freqsMaxDetect();                //checks freqsMax array against detection threshold
-  
+
+  if (ptp1 > ptp2) {
+    directionDetect = false;
+  }
+  else {
+    directionDetect = true;
+  }
+  /*
+  if (sirenDetect) {
+    if (directionDetect) {
+      analogWrite(led_Right, 200);
+    }
+    else {
+      analogWrite(led_Left, 200);
+    }
+  }
+  else {
+    analogWrite(led_Right, 0);
+    analogWrite(led_Left, 0);
+  }
+  */
+  //t0 = millis();  
   //t = millis()-t0;
   //Serial.println(t);
   //printFreqsMax();
-  //printAmpsAvg();
-  //Serial.println(ampLimit);
+  //printMagsAvg();
+  //Serial.println(magLimit);
   //printrawInputArray1Abs();
   //printrawInputArray1();
-  //Serial.println((freqMaxBin+kstart)*fs/N);
+  Serial.println((freqMaxBin+kstart)*fs/N);
 }
 
 
 //Populate cos and sin lookup table
 void populateLookup(){
-  for (int i = 0; i < N; i++){
-    coslookup[i] = cos(Pi2N*i);
-    sinlookup[i] = sin(Pi2N*i);
+  for (int k = 0; k < N; k++){
+    coslookup[k] = cos(Pi2N*k);
+    sinlookup[k] = sin(Pi2N*k);
   }
 }
 
 
-//Fill array with mic1 input
-void readMic1(){
+//Fill rawInputArray1 with mic1 input and rawInputArray2 with mic2 input
+void readMics(){
   while (sampleCount < sampleNum) {
     rawInputArray1[sampleCount] = analogRead(mic1);
-    sampleCount++;
-  }
-  sampleCount = 0;
-}
-
-
-//Fill array with mic1 input
-void readMic2(){
-  while (sampleCount < sampleNum) {
     rawInputArray2[sampleCount] = analogRead(mic2);
     sampleCount++;
   }
@@ -243,7 +255,7 @@ uint8_t freqMax(){
 //Determines whether to put freq into freqsMax array
 void freqsMaxAdd(uint8_t index) {
   if (freqCount > freqNum - 1) freqCount = 0; //resets freqsMax array index count
-  if ((rawInputArray1Abs[index] > ampLimit) && (index + kstart > freqLimit)) {
+  if ((rawInputArray1Abs[index] > magLimit) && (index + kstart > freqLimit)) {
     freqsMax[freqCount] = 1;
   }
   else {
@@ -260,36 +272,40 @@ void freqsMaxDetect() {
     sum += freqsMax[i];
   }
   if (sum >= detectLimit) {
+    sirenDetect = true;
     Serial.println("SIREN");
   }
+  else {
+    sirenDetect = false;
+  }
 }
 
 
-//Finds average frequency amplitude
-void ampsAvgAdd() {
-  uint32_t ampAvgVal = 0;
-  if (ampCount > ampNum - 1) ampCount = 0; //resets ampsAvg array index count
+//Finds average frequency magnitudes
+void magsAvgAdd() {
+  uint32_t magAvgVal = 0;
+  if (magCount > magNum - 1) magCount = 0; //resets magsAvg array index count
   for (int i = 0; i < kdiff; i++) {
-    ampAvgVal += rawInputArray1Abs[i];
+    magAvgVal += rawInputArray1Abs[i];
   }
-  ampAvgVal = ampAvgVal/kdiff;
-  if (ampAvgVal > ampCutoff*ampLimit) {
-    ampsAvg[ampCount] = ampCutoff*ampLimit;
+  magAvgVal = magAvgVal/kdiff;
+  if (magAvgVal > magCutoff*magLimit) {
+    magsAvg[magCount] = magCutoff*magLimit;
   }
   else {
-    ampsAvg[ampCount] = ampAvgVal+ampWeight;
+    magsAvg[magCount] = magAvgVal+magWeight;
   }  
-  ampCount++; //increase count
+  magCount++; //increase count
 }
 
 
-//sets amplitude limit by taking the average of the ampsAvg array
-void ampLimitSet() {
-  uint32_t ampsAvgVal = 0;
-  for (int i = 0; i < ampNum; i++) {
-    ampsAvgVal += ampsAvg[i];
+//sets magnitudes limit by taking the average of the magsAvg array
+void magLimitSet() {
+  uint32_t magsAvgVal = 0;
+  for (int i = 0; i < magNum; i++) {
+    magsAvgVal += magsAvg[i];
   }
-  ampLimit = ampsAvgVal/ampNum;
+  magLimit = magsAvgVal/magNum;
 }
 
 
@@ -322,9 +338,9 @@ void printFreqsMax(){
 }
 
 
-void printAmpsAvg(){
-  for (int i = 0; i < ampNum; i++) {
-    Serial.print(ampsAvg[i]);
+void printMagsAvg(){
+  for (int i = 0; i < magNum; i++) {
+    Serial.print(magsAvg[i]);
     Serial.print(" ");
   }
   Serial.println();
